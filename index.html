@@ -1,0 +1,1327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Values-to-Action Pathfinder</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/canvas-confetti@1.9.3/dist/confetti.browser.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
+      colors: {
+        brand: { 50:'#f0f4ff', 100:'#dbe4ff', 200:'#bac8ff', 300:'#91a7ff', 400:'#748ffc', 500:'#5c7cfa', 600:'#4c6ef5', 700:'#4263eb', 800:'#3b5bdb', 900:'#364fc7' },
+        accent: { 400:'#ffa94d', 500:'#ff922b', 600:'#fd7e14' },
+        mint: { 400:'#63e6be', 500:'#38d9a9', 600:'#20c997' }
+      }
+    }
+  }
+}
+</script>
+<style>
+* { -webkit-tap-highlight-color: transparent; }
+body { font-family: 'Inter', system-ui, sans-serif; }
+.fade-in { animation: fadeIn 0.4s ease-out; }
+@keyframes fadeIn { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
+.slide-up { animation: slideUp 0.5s ease-out; }
+@keyframes slideUp { from { opacity:0; transform:translateY(40px); } to { opacity:1; transform:translateY(0); } }
+.pulse-glow { animation: pulseGlow 2s infinite; }
+@keyframes pulseGlow { 0%,100% { box-shadow: 0 0 0 0 rgba(92,124,250,0.4); } 50% { box-shadow: 0 0 0 12px rgba(92,124,250,0); } }
+.chat-bubble { position: relative; }
+.chat-bubble::before { content:''; position:absolute; bottom:-6px; left:16px; width:12px; height:12px; background:inherit; transform:rotate(45deg); border-radius:2px; }
+.progress-ring { transition: stroke-dashoffset 0.6s ease; }
+input[type="range"] { -webkit-appearance:none; height:8px; border-radius:4px; background:#dbe4ff; outline:none; }
+input[type="range"]::-webkit-slider-thumb { -webkit-appearance:none; width:28px; height:28px; border-radius:50%; background:#4c6ef5; cursor:pointer; border:3px solid white; box-shadow:0 2px 8px rgba(0,0,0,0.2); }
+.experiment-card:active { transform: scale(0.97); }
+.experiment-card { transition: transform 0.15s ease; }
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #bac8ff; border-radius: 4px; }
+</style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+
+<div id="app" class="max-w-lg mx-auto min-h-screen flex flex-col">
+  <!-- Header -->
+  <header class="sticky top-0 z-50 bg-white/90 backdrop-blur-md border-b border-brand-100 px-4 py-3">
+    <div class="flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center text-white text-lg">🧭</div>
+        <div>
+          <h1 class="text-base font-bold text-brand-900 leading-tight">Pathfinder</h1>
+          <p class="text-[10px] text-brand-400 font-medium">Values → Action</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <button onclick="showScreen('roadmap')" class="p-2 rounded-xl hover:bg-brand-50 transition" title="My Roadmap">
+          <svg class="w-5 h-5 text-brand-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/></svg>
+        </button>
+        <button onclick="showScreen('settings')" class="p-2 rounded-xl hover:bg-brand-50 transition" title="Settings">
+          <svg class="w-5 h-5 text-brand-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content Area -->
+  <main id="main-content" class="flex-1 overflow-y-auto pb-24">
+  </main>
+
+  <!-- Bottom Nav -->
+  <nav class="fixed bottom-0 left-0 right-0 max-w-lg mx-auto bg-white border-t border-gray-200 px-2 py-2 z-50">
+    <div class="flex justify-around">
+      <button onclick="showScreen('home')" id="nav-home" class="nav-btn flex flex-col items-center gap-0.5 p-2 rounded-xl min-w-[60px] transition">
+        <span class="text-xl">🏠</span><span class="text-[10px] font-medium">Home</span>
+      </button>
+      <button onclick="showScreen('assess')" id="nav-assess" class="nav-btn flex flex-col items-center gap-0.5 p-2 rounded-xl min-w-[60px] transition">
+        <span class="text-xl">💬</span><span class="text-[10px] font-medium">Explore</span>
+      </button>
+      <button onclick="showScreen('experiments')" id="nav-experiments" class="nav-btn flex flex-col items-center gap-0.5 p-2 rounded-xl min-w-[60px] transition">
+        <span class="text-xl">🧪</span><span class="text-[10px] font-medium">Try</span>
+      </button>
+      <button onclick="showScreen('roadmap')" id="nav-roadmap" class="nav-btn flex flex-col items-center gap-0.5 p-2 rounded-xl min-w-[60px] transition">
+        <span class="text-xl">🗺️</span><span class="text-[10px] font-medium">Roadmap</span>
+      </button>
+    </div>
+  </nav>
+</div>
+
+<script>
+// ========== GLOBALS ==========
+let totalAIInputTokens = 0;
+let totalAIOutputTokens = 0;
+let totalAITime = 0;
+let aiTimeByAlias = {};
+let currentScreen = 'home';
+
+// ========== DATA ==========
+function loadData() {
+  const d = localStorage.getItem('pathfinder_data');
+  return d ? JSON.parse(d) : {
+    name: '',
+    grade: '',
+    values: [],
+    strengths: [],
+    interests: [],
+    chatHistory: [],
+    experiments: [],
+    roadmap: null,
+    assessmentComplete: false,
+    onboarded: false,
+    counselorCode: ''
+  };
+}
+function saveData(data) {
+  localStorage.setItem('pathfinder_data', JSON.stringify(data));
+}
+
+// ========== AI CALL ==========
+async function callAI(prompt, retries = 3) {
+  const start = Date.now();
+  for (let i = 0; i < retries; i++) {
+    try {
+      const res = await fetch('https://16504442930.work/run_prompt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ alias: 'genericAI', params: { prompt } })
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
+      const json = await res.json();
+      const elapsed = Date.now() - start;
+      totalAITime += elapsed;
+      aiTimeByAlias['genericAI'] = (aiTimeByAlias['genericAI'] || 0) + elapsed;
+      if (json.input_tokens) totalAIInputTokens += json.input_tokens;
+      if (json.output_tokens) totalAIOutputTokens += json.output_tokens;
+      return json;
+    } catch (e) {
+      if (i === retries - 1) {
+        // Format error with AI
+        try {
+          const errRes = await fetch('https://16504442930.work/run_prompt', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ alias: 'genericAI', params: { prompt: `Reformat this error message to be user-friendly for a teenager. Help them understand what went wrong and what they can try. Include the full original error. Error: ${e.message}. Return JSON with key "friendlyError" as a string.` } })
+          });
+          const errJson = await errRes.json();
+          throw new Error(errJson.friendlyError || e.message);
+        } catch (e2) {
+          throw new Error(`Oops! Something went wrong. Try again in a moment. (${e.message})`);
+        }
+      }
+      await new Promise(r => setTimeout(r, 1000 * (i + 1)));
+    }
+  }
+}
+
+// ========== SCREENS ==========
+function showScreen(screen) {
+  currentScreen = screen;
+  const main = document.getElementById('main-content');
+  document.querySelectorAll('.nav-btn').forEach(b => {
+    b.classList.remove('bg-brand-50', 'text-brand-700');
+    b.classList.add('text-gray-400');
+  });
+  const activeNav = document.getElementById(`nav-${screen}`);
+  if (activeNav) {
+    activeNav.classList.add('bg-brand-50', 'text-brand-700');
+    activeNav.classList.remove('text-gray-400');
+  }
+
+  const data = loadData();
+  switch(screen) {
+    case 'home': renderHome(main, data); break;
+    case 'assess': renderAssess(main, data); break;
+    case 'experiments': renderExperiments(main, data); break;
+    case 'roadmap': renderRoadmap(main, data); break;
+    case 'settings': renderSettings(main, data); break;
+    default: renderHome(main, data);
+  }
+}
+
+// ========== HOME ==========
+function renderHome(el, data) {
+  const hasStarted = data.assessmentComplete || data.values.length > 0;
+  const experimentsActive = data.experiments.filter(e => e.status === 'active').length;
+  const experimentsCompleted = data.experiments.filter(e => e.status === 'completed').length;
+
+  el.innerHTML = `
+    <div class="fade-in px-5 pt-6">
+      ${!data.onboarded ? `
+        <div class="mb-6 bg-gradient-to-br from-brand-500 to-brand-800 rounded-2xl p-6 text-white slide-up">
+          <h2 class="text-2xl font-extrabold mb-2">Hey there! 👋</h2>
+          <p class="text-brand-100 text-sm mb-4">Ready to discover what drives you and turn it into real action? This takes ~5 min to start.</p>
+          <div class="space-y-3 mb-5">
+            <div class="flex items-start gap-3"><span class="text-lg">💬</span><div><p class="font-semibold text-sm">Chat & Reflect</p><p class="text-xs text-brand-200">Answer fun questions about what matters to you</p></div></div>
+            <div class="flex items-start gap-3"><span class="text-lg">🧪</span><div><p class="font-semibold text-sm">Try Experiments</p><p class="text-xs text-brand-200">Get personalized clubs, projects & micro-internships to try</p></div></div>
+            <div class="flex items-start gap-3"><span class="text-lg">🗺️</span><div><p class="font-semibold text-sm">Build Your Roadmap</p><p class="text-xs text-brand-200">See your purpose path evolve as you explore</p></div></div>
+          </div>
+          <input id="onboard-name" type="text" placeholder="What's your first name?" class="w-full px-4 py-3 rounded-xl bg-white/20 text-white placeholder-brand-200 text-sm font-medium border border-white/30 focus:outline-none focus:ring-2 focus:ring-white/50 mb-3" value="${data.name}">
+          <select id="onboard-grade" class="w-full px-4 py-3 rounded-xl bg-white/20 text-white text-sm font-medium border border-white/30 focus:outline-none focus:ring-2 focus:ring-white/50 mb-4 appearance-none">
+            <option value="" class="text-gray-800">What grade are you in?</option>
+            <option value="9" class="text-gray-800" ${data.grade==='9'?'selected':''}>9th Grade (Freshman)</option>
+            <option value="10" class="text-gray-800" ${data.grade==='10'?'selected':''}>10th Grade (Sophomore)</option>
+            <option value="11" class="text-gray-800" ${data.grade==='11'?'selected':''}>11th Grade (Junior)</option>
+            <option value="12" class="text-gray-800" ${data.grade==='12'?'selected':''}>12th Grade (Senior)</option>
+          </select>
+          <button onclick="startOnboarding()" class="w-full py-3.5 bg-white text-brand-700 font-bold rounded-xl text-sm hover:bg-brand-50 transition pulse-glow">Let's Go! 🚀</button>
+        </div>
+      ` : `
+        <div class="mb-5">
+          <h2 class="text-2xl font-extrabold text-brand-900">Welcome back, ${data.name || 'Explorer'}! ✨</h2>
+          <p class="text-sm text-gray-500 mt-1">Your purpose journey continues</p>
+        </div>
+
+        <!-- Progress Card -->
+        <div class="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 mb-4">
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="font-bold text-sm text-gray-800">Your Progress</h3>
+            <span class="text-xs bg-brand-100 text-brand-700 px-2.5 py-1 rounded-full font-semibold">${getProgressLevel(data)}</span>
+          </div>
+          <div class="w-full h-3 bg-gray-100 rounded-full overflow-hidden mb-2">
+            <div class="h-full bg-gradient-to-r from-brand-400 to-mint-500 rounded-full transition-all duration-700" style="width:${getProgressPct(data)}%"></div>
+          </div>
+          <p class="text-xs text-gray-400">${getProgressPct(data)}% of your exploration complete</p>
+        </div>
+
+        <!-- Stats -->
+        <div class="grid grid-cols-3 gap-3 mb-5">
+          <div class="bg-white rounded-xl p-3 text-center shadow-sm border border-gray-100">
+            <p class="text-2xl font-extrabold text-brand-600">${data.values.length}</p>
+            <p class="text-[10px] text-gray-500 font-medium">Values Found</p>
+          </div>
+          <div class="bg-white rounded-xl p-3 text-center shadow-sm border border-gray-100">
+            <p class="text-2xl font-extrabold text-accent-500">${experimentsActive}</p>
+            <p class="text-[10px] text-gray-500 font-medium">Active Tries</p>
+          </div>
+          <div class="bg-white rounded-xl p-3 text-center shadow-sm border border-gray-100">
+            <p class="text-2xl font-extrabold text-mint-600">${experimentsCompleted}</p>
+            <p class="text-[10px] text-gray-500 font-medium">Completed</p>
+          </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="space-y-3">
+          ${!data.assessmentComplete ? `
+            <button onclick="showScreen('assess')" class="w-full flex items-center gap-4 bg-gradient-to-r from-brand-500 to-brand-700 text-white p-4 rounded-2xl shadow-lg hover:shadow-xl transition pulse-glow">
+              <span class="text-2xl">💬</span>
+              <div class="text-left flex-1">
+                <p class="font-bold text-sm">Continue Your Exploration</p>
+                <p class="text-xs text-brand-200">Chat to discover your values & strengths</p>
+              </div>
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+            </button>
+          ` : `
+            <button onclick="showScreen('experiments')" class="w-full flex items-center gap-4 bg-gradient-to-r from-accent-500 to-accent-600 text-white p-4 rounded-2xl shadow-lg hover:shadow-xl transition pulse-glow">
+              <span class="text-2xl">🧪</span>
+              <div class="text-left flex-1">
+                <p class="font-bold text-sm">Check Your Experiments</p>
+                <p class="text-xs text-orange-100">See what to try next</p>
+              </div>
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+            </button>
+          `}
+          ${data.roadmap ? `
+            <button onclick="showScreen('roadmap')" class="w-full flex items-center gap-4 bg-white border-2 border-mint-400 text-mint-700 p-4 rounded-2xl hover:bg-mint-50 transition">
+              <span class="text-2xl">🗺️</span>
+              <div class="text-left flex-1">
+                <p class="font-bold text-sm">View Your Roadmap</p>
+                <p class="text-xs text-mint-500">Your personalized purpose path</p>
+              </div>
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+            </button>
+          ` : ''}
+        </div>
+
+        ${data.values.length > 0 ? `
+          <div class="mt-5 bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
+            <h3 class="font-bold text-sm text-gray-800 mb-3">🌟 Your Top Values</h3>
+            <div class="flex flex-wrap gap-2">
+              ${data.values.slice(0,6).map(v => `<span class="px-3 py-1.5 bg-brand-100 text-brand-700 rounded-full text-xs font-semibold">${v}</span>`).join('')}
+            </div>
+          </div>
+        ` : ''}
+      `}
+    </div>
+  `;
+}
+
+function startOnboarding() {
+  const name = document.getElementById('onboard-name').value.trim();
+  const grade = document.getElementById('onboard-grade').value;
+  if (!name) { shakeElement('onboard-name'); return; }
+  if (!grade) { shakeElement('onboard-grade'); return; }
+  const data = loadData();
+  data.name = name;
+  data.grade = grade;
+  data.onboarded = true;
+  saveData(data);
+  confetti({ particleCount: 80, spread: 70, origin: { y: 0.6 } });
+  showScreen('assess');
+}
+
+function shakeElement(id) {
+  const el = document.getElementById(id);
+  el.style.animation = 'none';
+  el.offsetHeight;
+  el.style.animation = 'shake 0.4s ease';
+  el.style.border = '2px solid #ff6b6b';
+  setTimeout(() => { el.style.border = ''; el.style.animation = ''; }, 1000);
+}
+
+function getProgressPct(data) {
+  let p = 0;
+  if (data.onboarded) p += 10;
+  if (data.values.length > 0) p += 15;
+  if (data.strengths.length > 0) p += 15;
+  if (data.assessmentComplete) p += 20;
+  if (data.experiments.length > 0) p += 15;
+  const completed = data.experiments.filter(e => e.status === 'completed').length;
+  p += Math.min(completed * 5, 15);
+  if (data.roadmap) p += 10;
+  return Math.min(p, 100);
+}
+
+function getProgressLevel(data) {
+  const p = getProgressPct(data);
+  if (p < 20) return '🌱 Seedling';
+  if (p < 40) return '🌿 Sprout';
+  if (p < 60) return '🌳 Growing';
+  if (p < 80) return '🌟 Shining';
+  return '🔥 Trailblazer';
+}
+
+// ========== ASSESSMENT CHAT ==========
+const assessmentQuestions = [
+  { id: 'q1', text: "If you had a whole free Saturday with zero obligations, what would you actually do? Be real — no judgment! 😄", type: 'text' },
+  { id: 'q2', text: "Think of a time you felt really proud of yourself. What were you doing?", type: 'text' },
+  { id: 'q3', text: "Which of these sounds most like you? Pick your top 2-3:", type: 'chips', options: ['Helping others', 'Creating things', 'Solving puzzles', 'Leading a team', 'Learning new stuff', 'Performing/presenting', 'Working with nature', 'Building/fixing things', 'Writing/storytelling', 'Organizing & planning'] },
+  { id: 'q4', text: "What kind of problems in the world bug you the most? 🤔", type: 'text' },
+  { id: 'q5', text: "Rate how much these matter to you (1=not much, 5=a lot):", type: 'sliders', options: ['Making money', 'Helping people', 'Being creative', 'Having freedom', 'Working with a team', 'Being famous/recognized', 'Learning constantly', 'Making things fair'] },
+  { id: 'q6', text: "What subjects or activities do people come to YOU for help with?", type: 'text' },
+  { id: 'q7', text: "If you could shadow anyone for a week — real or fictional — who would it be and why?", type: 'text' }
+];
+
+let currentQuestionIndex = 0;
+let chatAnswers = {};
+
+function renderAssess(el, data) {
+  if (data.assessmentComplete) {
+    renderAssessComplete(el, data);
+    return;
+  }
+
+  const answered = Object.keys(chatAnswers).length;
+  currentQuestionIndex = Math.min(answered, assessmentQuestions.length - 1);
+
+  el.innerHTML = `
+    <div class="fade-in px-5 pt-4">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-lg font-bold text-brand-900">Let's Explore You 💬</h2>
+        <span class="text-xs bg-brand-100 text-brand-600 px-2.5 py-1 rounded-full font-semibold">${answered}/${assessmentQuestions.length}</span>
+      </div>
+      <div class="w-full h-2 bg-gray-100 rounded-full mb-5">
+        <div class="h-full bg-gradient-to-r from-brand-400 to-brand-600 rounded-full transition-all duration-500" style="width:${(answered/assessmentQuestions.length)*100}%"></div>
+      </div>
+      <div id="chat-area" class="space-y-4 pb-4">
+      </div>
+      <div id="input-area" class="mt-4"></div>
+    </div>
+  `;
+
+  renderChatHistory();
+  renderCurrentQuestion();
+}
+
+function renderChatHistory() {
+  const chatArea = document.getElementById('chat-area');
+  if (!chatArea) return;
+
+  let html = '';
+  for (let i = 0; i <= currentQuestionIndex; i++) {
+    const q = assessmentQuestions[i];
+    html += `
+      <div class="fade-in">
+        <div class="chat-bubble bg-brand-100 text-brand-800 rounded-2xl rounded-bl-sm px-4 py-3 max-w-[85%] text-sm">
+          ${q.text}
+        </div>
+      </div>
+    `;
+    if (chatAnswers[q.id]) {
+      const ans = chatAnswers[q.id];
+      html += `
+        <div class="flex justify-end fade-in">
+          <div class="bg-brand-600 text-white rounded-2xl rounded-br-sm px-4 py-3 max-w-[85%] text-sm">
+            ${Array.isArray(ans) ? ans.join(', ') : (typeof ans === 'object' ? Object.entries(ans).map(([k,v]) => `${k}: ${'⭐'.repeat(v)}`).join('<br>') : ans)}
+          </div>
+        </div>
+      `;
+    }
+  }
+  chatArea.innerHTML = html;
+  setTimeout(() => chatArea.scrollIntoView({ behavior: 'smooth', block: 'end' }), 100);
+}
+
+function renderCurrentQuestion() {
+  const inputArea = document.getElementById('input-area');
+  if (!inputArea) return;
+  if (currentQuestionIndex >= assessmentQuestions.length) {
+    inputArea.innerHTML = `
+      <button onclick="processAssessment()" class="w-full py-4 bg-gradient-to-r from-brand-500 to-mint-500 text-white font-bold rounded-2xl text-sm shadow-lg pulse-glow">
+        ✨ Analyze My Values & Strengths
+      </button>
+    `;
+    return;
+  }
+
+  const q = assessmentQuestions[currentQuestionIndex];
+  if (chatAnswers[q.id]) {
+    currentQuestionIndex++;
+    renderCurrentQuestion();
+    return;
+  }
+
+  if (q.type === 'text') {
+    inputArea.innerHTML = `
+      <div class="flex gap-2">
+        <input id="chat-input" type="text" placeholder="Type your answer..." class="flex-1 px-4 py-3.5 rounded-xl border-2 border-brand-200 focus:border-brand-500 focus:outline-none text-sm" onkeypress="if(event.key==='Enter')submitTextAnswer()">
+        <button onclick="submitTextAnswer()" class="px-5 py-3.5 bg-brand-600 text-white rounded-xl font-bold text-sm hover:bg-brand-700 transition min-w-[48px]">→</button>
+      </div>
+    `;
+    setTimeout(() => document.getElementById('chat-input')?.focus(), 200);
+  } else if (q.type === 'chips') {
+    inputArea.innerHTML = `
+      <div class="space-y-3">
+        <div id="chips-container" class="flex flex-wrap gap-2">
+          ${q.options.map(o => `
+            <button onclick="toggleChip(this, '${o}')" class="chip-btn px-3 py-2 rounded-full border-2 border-brand-200 text-brand-700 text-xs font-semibold transition hover:border-brand-400" data-selected="false">${o}</button>
+          `).join('')}
+        </div>
+        <button onclick="submitChipsAnswer()" class="w-full py-3 bg-brand-600 text-white rounded-xl font-bold text-sm">Done ✓</button>
+      </div>
+    `;
+  } else if (q.type === 'sliders') {
+    inputArea.innerHTML = `
+      <div class="space-y-3 bg-white rounded-2xl p-4 border border-gray-100">
+        ${q.options.map(o => `
+          <div class="space-y-1">
+            <div class="flex justify-between items-center">
+              <label class="text-xs font-medium text-gray-700">${o}</label>
+              <span id="slider-val-${o.replace(/\s/g,'')}" class="text-xs font-bold text-brand-600">3</span>
+            </div>
+            <input type="range" min="1" max="5" value="3" class="w-full" data-label="${o}" oninput="document.getElementById('slider-val-${o.replace(/\s/g,'')}').textContent=this.value">
+          </div>
+        `).join('')}
+        <button onclick="submitSlidersAnswer()" class="w-full py-3 bg-brand-600 text-white rounded-xl font-bold text-sm mt-2">Continue →</button>
+      </div>
+    `;
+  }
+}
+
+function submitTextAnswer() {
+  const input = document.getElementById('chat-input');
+  if (!input || !input.value.trim()) return;
+  const q = assessmentQuestions[currentQuestionIndex];
+  chatAnswers[q.id] = input.value.trim();
+  currentQuestionIndex++;
+  renderChatHistory();
+  renderCurrentQuestion();
+}
+
+function toggleChip(btn, value) {
+  const sel = btn.dataset.selected === 'true';
+  btn.dataset.selected = (!sel).toString();
+  if (!sel) {
+    btn.classList.add('bg-brand-600', 'text-white', 'border-brand-600');
+    btn.classList.remove('text-brand-700', 'border-brand-200');
+  } else {
+    btn.classList.remove('bg-brand-600', 'text-white', 'border-brand-600');
+    btn.classList.add('text-brand-700', 'border-brand-200');
+  }
+}
+
+function submitChipsAnswer() {
+  const chips = document.querySelectorAll('.chip-btn[data-selected="true"]');
+  if (chips.length === 0) return;
+  const q = assessmentQuestions[currentQuestionIndex];
+  chatAnswers[q.id] = Array.from(chips).map(c => c.textContent);
+  currentQuestionIndex++;
+  renderChatHistory();
+  renderCurrentQuestion();
+}
+
+function submitSlidersAnswer() {
+  const sliders = document.querySelectorAll('#input-area input[type="range"]');
+  const q = assessmentQuestions[currentQuestionIndex];
+  const vals = {};
+  sliders.forEach(s => { vals[s.dataset.label] = parseInt(s.value); });
+  chatAnswers[q.id] = vals;
+  currentQuestionIndex++;
+  renderChatHistory();
+  renderCurrentQuestion();
+}
+
+async function processAssessment() {
+  const btn = event.target;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="inline-block animate-spin mr-2">⏳</span> Analyzing your answers...';
+
+  const data = loadData();
+  const answersStr = JSON.stringify(chatAnswers);
+
+  try {
+    const result = await callAI(`You are an expert career counselor and positive psychology specialist for teenagers. Analyze these assessment answers from a ${data.grade}th grade student named ${data.name}:
+
+${answersStr}
+
+Based on their responses, identify their core values, key strengths, and interest areas. Be specific and insightful, connecting patterns across their answers. Use language that resonates with teens.
+
+Return a JSON object with exactly this structure:
+{
+  "values": ["string", "string", ...] (exactly 5-7 core values like "Creativity", "Justice", "Connection", "Growth", "Freedom", "Impact", "Adventure", etc.),
+  "strengths": ["string", "string", ...] (exactly 4-6 key strengths/skills like "Creative Problem-Solving", "Empathetic Communication", "Strategic Thinking", etc.),
+  "interests": ["string", "string", ...] (exactly 4-6 interest areas like "Technology & Innovation", "Environmental Science", "Visual Arts", etc.),
+  "summary": "string" (a 2-3 sentence encouraging personal summary written directly to the teen, highlighting their unique combination of values and strengths),
+  "archetype": "string" (a fun, empowering archetype name like "The Creative Changemaker" or "The Analytical Helper")
+}`);
+
+    data.values = result.values || [];
+    data.strengths = result.strengths || [];
+    data.interests = result.interests || [];
+    data.summary = result.summary || '';
+    data.archetype = result.archetype || '';
+    data.assessmentComplete = true;
+    data.chatAnswers = chatAnswers;
+    saveData(data);
+
+    confetti({ particleCount: 150, spread: 80, origin: { y: 0.5 } });
+    showScreen('assess');
+  } catch (e) {
+    btn.disabled = false;
+    btn.innerHTML = '✨ Analyze My Values & Strengths';
+    alert(e.message);
+  }
+}
+
+function renderAssessComplete(el, data) {
+  el.innerHTML = `
+    <div class="fade-in px-5 pt-4">
+      <div class="bg-gradient-to-br from-brand-500 via-brand-600 to-brand-800 rounded-2xl p-6 text-white mb-5 slide-up">
+        <div class="text-center mb-4">
+          <span class="text-4xl block mb-2">🎯</span>
+          <h2 class="text-xl font-extrabold">${data.archetype || 'Your Profile'}</h2>
+          <p class="text-brand-200 text-sm mt-2">${data.summary || ''}</p>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 mb-4">
+        <h3 class="font-bold text-sm text-gray-800 mb-3">🌟 Your Core Values</h3>
+        <div class="flex flex-wrap gap-2">
+          ${(data.values||[]).map(v => `<span class="px-3 py-1.5 bg-brand-100 text-brand-700 rounded-full text-xs font-semibold">${v}</span>`).join('')}
+        </div>
+      </div>
+
+      <div class="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 mb-4">
+        <h3 class="font-bold text-sm text-gray-800 mb-3">💪 Your Strengths</h3>
+        <div class="flex flex-wrap gap-2">
+          ${(data.strengths||[]).map(s => `<span class="px-3 py-1.5 bg-mint-400/20 text-mint-700 rounded-full text-xs font-semibold">${s}</span>`).join('')}
+        </div>
+      </div>
+
+      <div class="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 mb-4">
+        <h3 class="font-bold text-sm text-gray-800 mb-3">🔍 Your Interests</h3>
+        <div class="flex flex-wrap gap-2">
+          ${(data.interests||[]).map(i => `<span class="px-3 py-1.5 bg-accent-400/20 text-accent-600 rounded-full text-xs font-semibold">${i}</span>`).join('')}
+        </div>
+      </div>
+
+      <div class="flex gap-3 mb-4">
+        <button onclick="generateExperiments()" class="flex-1 py-3.5 bg-gradient-to-r from-accent-500 to-accent-600 text-white font-bold rounded-xl text-sm shadow-lg">🧪 Get Experiments</button>
+        <button onclick="retakeAssessment()" class="py-3.5 px-4 bg-gray-100 text-gray-600 font-bold rounded-xl text-sm">🔄</button>
+      </div>
+    </div>
+  `;
+}
+
+function retakeAssessment() {
+  if (!confirm('Start the exploration over? Your experiments and roadmap will be kept.')) return;
+  const data = loadData();
+  data.assessmentComplete = false;
+  data.values = [];
+  data.strengths = [];
+  data.interests = [];
+  data.summary = '';
+  data.archetype = '';
+  saveData(data);
+  chatAnswers = {};
+  currentQuestionIndex = 0;
+  showScreen('assess');
+}
+
+// ========== EXPERIMENTS ==========
+async function generateExperiments() {
+  const data = loadData();
+  const el = document.getElementById('main-content');
+  el.innerHTML = `
+    <div class="flex flex-col items-center justify-center py-20 px-5">
+      <div class="animate-spin text-5xl mb-4">🧪</div>
+      <p class="text-brand-700 font-bold text-lg">Crafting Your Experiments...</p>
+      <p class="text-gray-400 text-sm mt-2">Finding the perfect activities for you</p>
+    </div>
+  `;
+
+  try {
+    const result = await callAI(`You are an expert school counselor creating personalized micro-experiments for a ${data.grade}th grade student.
+
+Student Profile:
+- Name: ${data.name}
+- Values: ${data.values.join(', ')}
+- Strengths: ${data.strengths.join(', ')}
+- Interests: ${data.interests.join(', ')}
+- Archetype: ${data.archetype}
+
+Generate 6 diverse, specific, low-risk experiments this student can try at school or in their community. Each should be completable in 1-4 weeks. Include a mix of:
+- School clubs or activities
+- Small personal projects
+- Volunteer or micro-internship opportunities
+- Creative challenges
+
+For each experiment, predict how it might develop specific skills and satisfaction based on their profile.
+
+Return a JSON object with exactly this structure:
+{
+  "experiments": [
+    {
+      "id": "string" (unique identifier like "exp_1"),
+      "title": "string" (catchy, action-oriented title, 3-6 words),
+      "emoji": "string" (single relevant emoji),
+      "description": "string" (1-2 sentence description of what to do),
+      "category": "string" (one of: "Club", "Project", "Volunteer", "Challenge", "Internship"),
+      "duration": "string" (like "1 week", "2 weeks", etc.),
+      "difficulty": "string" (one of: "Easy", "Medium", "Stretch"),
+      "valuesAligned": ["string", "string"] (2 values from their profile this aligns with),
+      "predictedSkills": ["string", "string"] (2-3 skills they'll develop),
+      "satisfactionScore": number (predicted satisfaction 1-10 based on their profile),
+      "nextSteps": ["string", "string", "string"] (3 concrete first steps to get started)
+    }
+  ] (exactly 6 experiments)
+}`);
+
+    const experiments = (result.experiments || []).map(exp => ({
+      ...exp,
+      status: 'suggested',
+      startedAt: null,
+      completedAt: null,
+      reflection: null,
+      rating: null
+    }));
+
+    data.experiments = [...experiments, ...data.experiments.filter(e => e.status !== 'suggested')];
+    saveData(data);
+    showScreen('experiments');
+  } catch (e) {
+    alert(e.message);
+    showScreen('assess');
+  }
+}
+
+function renderExperiments(el, data) {
+  if (!data.assessmentComplete) {
+    el.innerHTML = `
+      <div class="fade-in flex flex-col items-center justify-center py-20 px-8 text-center">
+        <span class="text-5xl mb-4">🧪</span>
+        <h2 class="text-xl font-bold text-gray-800 mb-2">Experiments Await!</h2>
+        <p class="text-sm text-gray-500 mb-6">Complete the exploration chat first, then we'll create personalized experiments just for you.</p>
+        <button onclick="showScreen('assess')" class="px-6 py-3 bg-brand-600 text-white rounded-xl font-bold text-sm">Start Exploring 💬</button>
+      </div>
+    `;
+    return;
+  }
+
+  if (data.experiments.length === 0) {
+    el.innerHTML = `
+      <div class="fade-in flex flex-col items-center justify-center py-20 px-8 text-center">
+        <span class="text-5xl mb-4">🧪</span>
+        <h2 class="text-xl font-bold text-gray-800 mb-2">Ready for Experiments?</h2>
+        <p class="text-sm text-gray-500 mb-6">Based on your values and strengths, we'll create personalized activities to try.</p>
+        <button onclick="generateExperiments()" class="px-6 py-3 bg-accent-500 text-white rounded-xl font-bold text-sm">Generate My Experiments ✨</button>
+      </div>
+    `;
+    return;
+  }
+
+  const suggested = data.experiments.filter(e => e.status === 'suggested');
+  const active = data.experiments.filter(e => e.status === 'active');
+  const completed = data.experiments.filter(e => e.status === 'completed');
+
+  el.innerHTML = `
+    <div class="fade-in px-5 pt-4">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-lg font-bold text-brand-900">Your Experiments 🧪</h2>
+        <button onclick="generateExperiments()" class="text-xs bg-brand-100 text-brand-600 px-3 py-1.5 rounded-full font-semibold">+ New</button>
+      </div>
+
+      ${active.length > 0 ? `
+        <h3 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">🔥 Active (${active.length})</h3>
+        <div class="space-y-3 mb-6">
+          ${active.map(exp => renderExperimentCard(exp, 'active')).join('')}
+        </div>
+      ` : ''}
+
+      ${suggested.length > 0 ? `
+        <h3 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">💡 Suggested (${suggested.length})</h3>
+        <div class="space-y-3 mb-6">
+          ${suggested.map(exp => renderExperimentCard(exp, 'suggested')).join('')}
+        </div>
+      ` : ''}
+
+      ${completed.length > 0 ? `
+        <h3 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">✅ Completed (${completed.length})</h3>
+        <div class="space-y-3 mb-6">
+          ${completed.map(exp => renderExperimentCard(exp, 'completed')).join('')}
+        </div>
+      ` : ''}
+
+      ${completed.length >= 1 && !data.roadmap ? `
+        <button onclick="generateRoadmap()" class="w-full py-4 bg-gradient-to-r from-mint-500 to-brand-500 text-white font-bold rounded-2xl text-sm shadow-lg pulse-glow mb-4">
+          🗺️ Generate My Purpose Roadmap
+        </button>
+      ` : ''}
+    </div>
+  `;
+}
+
+function renderExperimentCard(exp, status) {
+  const diffColor = { Easy: 'bg-green-100 text-green-700', Medium: 'bg-yellow-100 text-yellow-700', Stretch: 'bg-red-100 text-red-700' };
+  const catColor = { Club: '🏫', Project: '🔨', Volunteer: '💝', Challenge: '🏆', Internship: '💼' };
+
+  return `
+    <div class="experiment-card bg-white rounded-2xl p-4 shadow-sm border border-gray-100 cursor-pointer" onclick="showExperimentDetail('${exp.id}')">
+      <div class="flex items-start gap-3">
+        <span class="text-2xl">${exp.emoji || '🧪'}</span>
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-2 mb-1">
+            <h4 class="font-bold text-sm text-gray-800 truncate">${exp.title}</h4>
+          </div>
+          <p class="text-xs text-gray-500 mb-2 line-clamp-2">${exp.description}</p>
+          <div class="flex flex-wrap gap-1.5">
+            <span class="text-[10px] px-2 py-0.5 rounded-full ${diffColor[exp.difficulty] || 'bg-gray-100 text-gray-600'} font-medium">${exp.difficulty}</span>
+            <span class="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 font-medium">${catColor[exp.category] || '📌'} ${exp.category}</span>
+            <span class="text-[10px] px-2 py-0.5 rounded-full bg-brand-50 text-brand-600 font-medium">⏱ ${exp.duration}</span>
+          </div>
+          ${exp.satisfactionScore ? `
+            <div class="mt-2 flex items-center gap-1">
+              <span class="text-[10px] text-gray-400">Match:</span>
+              <div class="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                <div class="h-full rounded-full ${exp.satisfactionScore >= 8 ? 'bg-mint-500' : exp.satisfactionScore >= 6 ? 'bg-brand-400' : 'bg-accent-400'}" style="width:${exp.satisfactionScore*10}%"></div>
+              </div>
+              <span class="text-[10px] font-bold ${exp.satisfactionScore >= 8 ? 'text-mint-600' : 'text-brand-500'}">${exp.satisfactionScore}/10</span>
+            </div>
+          ` : ''}
+        </div>
+        ${status === 'completed' ? '<span class="text-green-500 text-lg">✅</span>' : ''}
+      </div>
+    </div>
+  `;
+}
+
+function showExperimentDetail(expId) {
+  const data = loadData();
+  const exp = data.experiments.find(e => e.id === expId);
+  if (!exp) return;
+
+  const el = document.getElementById('main-content');
+  el.innerHTML = `
+    <div class="fade-in px-5 pt-4">
+      <button onclick="showScreen('experiments')" class="flex items-center gap-1 text-brand-600 text-sm font-semibold mb-4">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+        Back
+      </button>
+
+      <div class="text-center mb-5">
+        <span class="text-5xl block mb-3">${exp.emoji || '🧪'}</span>
+        <h2 class="text-xl font-extrabold text-gray-900">${exp.title}</h2>
+        <p class="text-sm text-gray-500 mt-2">${exp.description}</p>
+      </div>
+
+      <div class="grid grid-cols-3 gap-3 mb-5">
+        <div class="bg-brand-50 rounded-xl p-3 text-center">
+          <p class="text-xs text-brand-600 font-bold">${exp.difficulty}</p>
+          <p class="text-[10px] text-brand-400">Difficulty</p>
+        </div>
+        <div class="bg-brand-50 rounded-xl p-3 text-center">
+          <p class="text-xs text-brand-600 font-bold">${exp.duration}</p>
+          <p class="text-[10px] text-brand-400">Duration</p>
+        </div>
+        <div class="bg-brand-50 rounded-xl p-3 text-center">
+          <p class="text-xs text-brand-600 font-bold">${exp.satisfactionScore}/10</p>
+          <p class="text-[10px] text-brand-400">Match</p>
+        </div>
+      </div>
+
+      ${exp.valuesAligned ? `
+        <div class="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 mb-3">
+          <h3 class="font-bold text-xs text-gray-600 mb-2">🌟 Values Aligned</h3>
+          <div class="flex flex-wrap gap-2">
+            ${exp.valuesAligned.map(v => `<span class="px-3 py-1 bg-brand-100 text-brand-700 rounded-full text-xs font-semibold">${v}</span>`).join('')}
+          </div>
+        </div>
+      ` : ''}
+
+      ${exp.predictedSkills ? `
+        <div class="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 mb-3">
+          <h3 class="font-bold text-xs text-gray-600 mb-2">💪 Skills You'll Build</h3>
+          <div class="flex flex-wrap gap-2">
+            ${exp.predictedSkills.map(s => `<span class="px-3 py-1 bg-mint-400/20 text-mint-700 rounded-full text-xs font-semibold">${s}</span>`).join('')}
+          </div>
+        </div>
+      ` : ''}
+
+      ${exp.nextSteps ? `
+        <div class="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 mb-5">
+          <h3 class="font-bold text-xs text-gray-600 mb-2">🚀 How to Start</h3>
+          <div class="space-y-2">
+            ${exp.nextSteps.map((s, i) => `
+              <div class="flex items-start gap-2">
+                <span class="w-5 h-5 rounded-full bg-brand-100 text-brand-600 flex items-center justify-center text-[10px] font-bold flex-shrink-0 mt-0.5">${i+1}</span>
+                <p class="text-xs text-gray-700">${s}</p>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      ` : ''}
+
+      ${exp.status === 'suggested' ? `
+        <button onclick="startExperiment('${exp.id}')" class="w-full py-3.5 bg-gradient-to-r from-brand-500 to-brand-700 text-white font-bold rounded-xl text-sm shadow-lg mb-3">
+          🚀 Start This Experiment
+        </button>
+        <button onclick="dismissExperiment('${exp.id}')" class="w-full py-3 bg-gray-100 text-gray-500 font-semibold rounded-xl text-sm mb-3">
+          Not for me
+        </button>
+      ` : exp.status === 'active' ? `
+        <button onclick="showReflection('${exp.id}')" class="w-full py-3.5 bg-gradient-to-r from-mint-500 to-mint-600 text-white font-bold rounded-xl text-sm shadow-lg mb-3">
+          ✅ Complete & Reflect
+        </button>
+        <button onclick="cancelExperiment('${exp.id}')" class="w-full py-3 bg-gray-100 text-gray-500 font-semibold rounded-xl text-sm mb-3">
+          Cancel Experiment
+        </button>
+      ` : `
+        ${exp.reflection ? `
+          <div class="bg-brand-50 rounded-2xl p-4 mb-3">
+            <h3 class="font-bold text-xs text-brand-700 mb-1">Your Reflection</h3>
+            <p class="text-xs text-brand-600">${exp.reflection}</p>
+            <p class="text-xs text-brand-400 mt-1">Rating: ${'⭐'.repeat(exp.rating || 0)}</p>
+          </div>
+        ` : ''}
+      `}
+    </div>
+  `;
+}
+
+function startExperiment(expId) {
+  const data = loadData();
+  const exp = data.experiments.find(e => e.id === expId);
+  if (exp) {
+    exp.status = 'active';
+    exp.startedAt = new Date().toISOString();
+    saveData(data);
+    confetti({ particleCount: 50, spread: 60, origin: { y: 0.7 } });
+  }
+  showScreen('experiments');
+}
+
+function dismissExperiment(expId) {
+  const data = loadData();
+  data.experiments = data.experiments.filter(e => e.id !== expId);
+  saveData(data);
+  showScreen('experiments');
+}
+
+function cancelExperiment(expId) {
+  const data = loadData();
+  const exp = data.experiments.find(e => e.id === expId);
+  if (exp) {
+    exp.status = 'suggested';
+    exp.startedAt = null;
+    saveData(data);
+  }
+  showScreen('experiments');
+}
+
+function showReflection(expId) {
+  const el = document.getElementById('main-content');
+  el.innerHTML = `
+    <div class="fade-in px-5 pt-6">
+      <h2 class="text-xl font-extrabold text-brand-900 mb-2">Time to Reflect! 🪞</h2>
+      <p class="text-sm text-gray-500 mb-6">How did this experiment go? Your honest thoughts help build your roadmap.</p>
+
+      <div class="space-y-5">
+        <div>
+          <label class="block text-sm font-bold text-gray-700 mb-2">How satisfied were you? ⭐</label>
+          <div class="flex gap-2" id="star-rating">
+            ${[1,2,3,4,5].map(n => `
+              <button onclick="setRating(${n})" class="star-btn text-3xl transition hover:scale-110 p-1" data-value="${n}">⭐</button>
+            `).join('')}
+          </div>
+          <input type="hidden" id="rating-value" value="0">
+        </div>
+
+        <div>
+          <label class="block text-sm font-bold text-gray-700 mb-2">What did you learn about yourself?</label>
+          <textarea id="reflection-text" rows="3" class="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-brand-500 focus:outline-none text-sm resize-none" placeholder="I discovered that I really enjoy..."></textarea>
+        </div>
+
+        <div>
+          <label class="block text-sm font-bold text-gray-700 mb-2">Would you want to do more like this?</label>
+          <div class="flex gap-2">
+            <button onclick="selectMoreLike(this, 'yes')" class="more-btn flex-1 py-3 rounded-xl border-2 border-gray-200 text-sm font-semibold transition">Yes! 🙌</button>
+            <button onclick="selectMoreLike(this, 'maybe')" class="more-btn flex-1 py-3 rounded-xl border-2 border-gray-200 text-sm font-semibold transition">Maybe 🤔</button>
+            <button onclick="selectMoreLike(this, 'no')" class="more-btn flex-1 py-3 rounded-xl border-2 border-gray-200 text-sm font-semibold transition">Not really 😅</button>
+          </div>
+          <input type="hidden" id="more-like-value" value="">
+        </div>
+
+        <button onclick="submitReflection('${expId}')" class="w-full py-3.5 bg-gradient-to-r from-brand-500 to-mint-500 text-white font-bold rounded-xl text-sm shadow-lg">
+          Save Reflection ✨
+        </button>
+      </div>
+    </div>
+  `;
+}
+
+function setRating(n) {
+  document.getElementById('rating-value').value = n;
+  document.querySelectorAll('.star-btn').forEach((btn, i) => {
+    btn.style.opacity = i < n ? '1' : '0.3';
+    btn.style.transform = i < n ? 'scale(1.1)' : 'scale(0.9)';
+  });
+}
+
+function selectMoreLike(btn, value) {
+  document.getElementById('more-like-value').value = value;
+  document.querySelectorAll('.more-btn').forEach(b => {
+    b.classList.remove('bg-brand-600', 'text-white', 'border-brand-600');
+    b.classList.add('border-gray-200');
+  });
+  btn.classList.add('bg-brand-600', 'text-white', 'border-brand-600');
+  btn.classList.remove('border-gray-200');
+}
+
+function submitReflection(expId) {
+  const rating = parseInt(document.getElementById('rating-value').value);
+  const reflection = document.getElementById('reflection-text').value.trim();
+  const moreLike = document.getElementById('more-like-value').value;
+
+  if (!rating) { alert('Please give a star rating! ⭐'); return; }
+  if (!reflection) { alert('Please share what you learned! 📝'); return; }
+
+  const data = loadData();
+  const exp = data.experiments.find(e => e.id === expId);
+  if (exp) {
+    exp.status = 'completed';
+    exp.completedAt = new Date().toISOString();
+    exp.reflection = reflection;
+    exp.rating = rating;
+    exp.wantMore = moreLike;
+    saveData(data);
+    confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
+  }
+  showScreen('experiments');
+}
+
+// ========== ROADMAP ==========
+async function generateRoadmap() {
+  const data = loadData();
+  const el = document.getElementById('main-content');
+  el.innerHTML = `
+    <div class="flex flex-col items-center justify-center py-20 px-5">
+      <div class="animate-spin text-5xl mb-4">🗺️</div>
+      <p class="text-brand-700 font-bold text-lg">Building Your Roadmap...</p>
+      <p class="text-gray-400 text-sm mt-2">Mapping your purpose journey</p>
+    </div>
+  `;
+
+  const completedExps = data.experiments.filter(e => e.status === 'completed');
+  const expSummary = completedExps.map(e => `"${e.title}" - Rating: ${e.rating}/5, Reflection: "${e.reflection}", Want more: ${e.wantMore}`).join('\n');
+
+  try {
+    const result = await callAI(`You are an expert school counselor and career development specialist. Create a personalized purpose roadmap for a ${data.grade}th grade student.
+
+Student Profile:
+- Name: ${data.name}
+- Values: ${data.values.join(', ')}
+- Strengths: ${data.strengths.join(', ')}
+- Interests: ${data.interests.join(', ')}
+- Archetype: ${data.archetype}
+
+Completed Experiments & Reflections:
+${expSummary || 'None completed yet'}
+
+Create a 4-phase roadmap that builds on their values, experiment outcomes, and strengths. Each phase should be 1-2 months. Include academic choices, extracurricular recommendations, and skill-building goals. Make it specific to their school context.
+
+Return a JSON object with exactly this structure:
+{
+  "title": "string" (personalized roadmap title like "The Creative Leader's Path"),
+  "vision": "string" (1-2 sentence inspiring vision statement for this student),
+  "phases": [
+    {
+      "number": number (1-4),
+      "name": "string" (phase name like "Explore & Experiment"),
+      "emoji": "string" (single emoji),
+      "timeframe": "string" (like "Month 1-2"),
+      "focus": "string" (1 sentence focus area),
+      "actions": ["string", "string", "string"] (3 specific actions),
+      "milestone": "string" (concrete milestone to hit),
+      "counselorCheckpoint": "string" (what to discuss with counselor)
+    }
+  ] (exactly 4 phases),
+  "suggestedMajors": ["string", "string", "string"] (3 potential college major areas to explore),
+  "careerDirections": ["string", "string", "string"] (3 career direction ideas, not specific jobs but areas),
+  "weeklyHabit": "string" (one small weekly habit to build purpose awareness)
+}`);
+
+    data.roadmap = result;
+    data.roadmapGeneratedAt = new Date().toISOString();
+    saveData(data);
+    confetti({ particleCount: 200, spread: 100, origin: { y: 0.4 } });
+    showScreen('roadmap');
+  } catch (e) {
+    alert(e.message);
+    showScreen('experiments');
+  }
+}
+
+function renderRoadmap(el, data) {
+  if (!data.roadmap) {
+    const canGenerate = data.assessmentComplete;
+    el.innerHTML = `
+      <div class="fade-in flex flex-col items-center justify-center py-20 px-8 text-center">
+        <span class="text-5xl mb-4">🗺️</span>
+        <h2 class="text-xl font-bold text-gray-800 mb-2">Your Purpose Roadmap</h2>
+        <p class="text-sm text-gray-500 mb-6">${canGenerate ? 'Complete at least one experiment for the best results, or generate now based on your profile.' : 'Complete the exploration and try some experiments first!'}</p>
+        ${canGenerate ? `
+          <button onclick="generateRoadmap()" class="px-6 py-3 bg-gradient-to-r from-mint-500 to-brand-500 text-white rounded-xl font-bold text-sm">Generate Roadmap ✨</button>
+        ` : `
+          <button onclick="showScreen('assess')" class="px-6 py-3 bg-brand-600 text-white rounded-xl font-bold text-sm">Start Exploring 💬</button>
+        `}
+      </div>
+    `;
+    return;
+  }
+
+  const rm = data.roadmap;
+  el.innerHTML = `
+    <div class="fade-in px-5 pt-4">
+      <div class="bg-gradient-to-br from-brand-600 to-mint-600 rounded-2xl p-5 text-white mb-5">
+        <h2 class="text-lg font-extrabold mb-1">🗺️ ${rm.title || 'Your Purpose Roadmap'}</h2>
+        <p class="text-sm text-white/80">${rm.vision || ''}</p>
+      </div>
+
+      ${rm.weeklyHabit ? `
+        <div class="bg-accent-400/10 border border-accent-400/30 rounded-2xl p-4 mb-5">
+          <h3 class="font-bold text-xs text-accent-600 mb-1">🔄 Weekly Habit</h3>
+          <p class="text-sm text-gray-700">${rm.weeklyHabit}</p>
+        </div>
+      ` : ''}
+
+      <!-- Timeline -->
+      <div class="relative pl-8 mb-6">
+        <div class="absolute left-3 top-0 bottom-0 w-0.5 bg-brand-200"></div>
+        ${(rm.phases || []).map((phase, i) => `
+          <div class="relative mb-6 slide-up" style="animation-delay:${i*0.15}s">
+            <div class="absolute left-[-24px] w-10 h-10 rounded-full bg-brand-500 flex items-center justify-center text-lg z-10 shadow-lg">
+              ${phase.emoji || '📍'}
+            </div>
+            <div class="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 ml-4">
+              <div class="flex items-center justify-between mb-2">
+                <h4 class="font-bold text-sm text-brand-900">${phase.name}</h4>
+                <span class="text-[10px] bg-brand-100 text-brand-600 px-2 py-0.5 rounded-full font-medium">${phase.timeframe}</span>
+              </div>
+              <p class="text-xs text-gray-500 mb-3">${phase.focus}</p>
+              <div class="space-y-1.5 mb-3">
+                ${(phase.actions || []).map(a => `
+                  <div class="flex items-start gap-2">
+                    <span class="text-brand-400 text-xs mt-0.5">▸</span>
+                    <p class="text-xs text-gray-700">${a}</p>
+                  </div>
+                `).join('')}
+              </div>
+              <div class="bg-mint-400/10 rounded-lg p-2">
+                <p class="text-[10px] text-mint-700 font-semibold">🎯 Milestone: ${phase.milestone}</p>
+              </div>
+              ${phase.counselorCheckpoint ? `
+                <div class="bg-brand-50 rounded-lg p-2 mt-2">
+                  <p class="text-[10px] text-brand-600 font-semibold">🗣️ Counselor Chat: ${phase.counselorCheckpoint}</p>
+                </div>
+              ` : ''}
+            </div>
+          </div>
+        `).join('')}
+      </div>
+
+      <!-- Directions -->
+      <div class="grid grid-cols-2 gap-3 mb-5">
+        <div class="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
+          <h3 class="font-bold text-xs text-gray-600 mb-2">📚 Majors to Explore</h3>
+          <div class="space-y-1.5">
+            ${(rm.suggestedMajors || []).map(m => `<p class="text-xs text-brand-700 font-medium">• ${m}</p>`).join('')}
+          </div>
+        </div>
+        <div class="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
+          <h3 class="font-bold text-xs text-gray-600 mb-2">🚀 Career Directions</h3>
+          <div class="space-y-1.5">
+            ${(rm.careerDirections || []).map(c => `<p class="text-xs text-mint-700 font-medium">• ${c}</p>`).join('')}
+          </div>
+        </div>
+      </div>
+
+      <!-- Share -->
+      <div class="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 mb-5">
+        <h3 class="font-bold text-sm text-gray-800 mb-2">Share with Your Counselor 🗣️</h3>
+        <p class="text-xs text-gray-500 mb-3">Generate a share code so your counselor can view your roadmap and guide you.</p>
+        <button onclick="shareToCounselor()" class="w-full py-3 bg-brand-600 text-white rounded-xl font-bold text-sm">Generate Share Code 📤</button>
+        <div id="share-code-display" class="mt-3"></div>
+      </div>
+
+      <button onclick="generateRoadmap()" class="w-full py-3 bg-gray-100 text-gray-600 font-semibold rounded-xl text-sm mb-4">
+        🔄 Regenerate Roadmap
+      </button>
+    </div>
+  `;
+}
+
+async function shareToCounselor() {
+  const data = loadData();
+  const shareCode = 'PF-' + Date.now().toString(36).toUpperCase();
+  const shareData = {
+    name: data.name,
+    grade: data.grade,
+    values: data.values,
+    strengths: data.strengths,
+    interests: data.interests,
+    archetype: data.archetype,
+    experiments: data.experiments.map(e => ({ title: e.title, status: e.status, rating: e.rating, reflection: e.reflection })),
+    roadmap: data.roadmap,
+    generatedAt: new Date().toISOString()
+  };
+
+  try {
+    await fetch('https://16504442930.work/write', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: shareCode, value: JSON.stringify(shareData) })
+    });
+
+    data.counselorCode = shareCode;
+    saveData(data);
+
+    const display = document.getElementById('share-code-display');
+    display.innerHTML = `
+      <div class="bg-brand-50 rounded-xl p-3 text-center">
+        <p class="text-xs text-brand-500 mb-1">Your share code:</p>
+        <p class="text-2xl font-extrabold text-brand-700 tracking-wider">${shareCode}</p>
+        <p class="text-[10px] text-brand-400 mt-1">Give this code to your counselor</p>
+      </div>
+    `;
+  } catch (e) {
+    alert('Could not generate share code. Try again!');
+  }
+}
+
+// ========== SETTINGS ==========
+function renderSettings(el, data) {
+  el.innerHTML = `
+    <div class="fade-in px-5 pt-4">
+      <h2 class="text-lg font-bold text-brand-900 mb-5">Settings ⚙️</h2>
+
+      <div class="space-y-4">
+        <div class="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
+          <label class="block text-sm font-bold text-gray-700 mb-2">Your Name</label>
+          <input id="settings-name" type="text" value="${data.name}" class="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-brand-500 focus:outline-none text-sm">
+        </div>
+
+        <div class="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
+          <label class="block text-sm font-bold text-gray-700 mb-2">Grade</label>
+          <select id="settings-grade" class="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-brand-500 focus:outline-none text-sm">
+            <option value="9" ${data.grade==='9'?'selected':''}>9th Grade</option>
+            <option value="10" ${data.grade==='10'?'selected':''}>10th Grade</option>
+            <option value="11" ${data.grade==='11'?'selected':''}>11th Grade</option>
+            <option value="12" ${data.grade==='12'?'selected':''}>12th Grade</option>
+          </select>
+        </div>
+
+        <button onclick="saveSettings()" class="w-full py-3 bg-brand-600 text-white rounded-xl font-bold text-sm">Save Changes</button>
+
+        <div class="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
+          <h3 class="font-bold text-sm text-gray-700 mb-2">🗣️ Counselor View</h3>
+          <p class="text-xs text-gray-500 mb-3">Enter a student's share code to view their roadmap.</p>
+          <div class="flex gap-2">
+            <input id="counselor-code" type="text" placeholder="Enter code (e.g., PF-ABC123)" class="flex-1 px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-brand-500 focus:outline-none text-sm uppercase">
+            <button onclick="viewStudentRoadmap()" class="px-4 py-3 bg-mint-600 text-white rounded-xl font-bold text-sm">View</button>
+          </div>
+          <div id="counselor-view-area" class="mt-3"></div>
+        </div>
+
+        ${data.counselorCode ? `
+          <div class="bg-brand-50 rounded-xl p-3 text-center">
+            <p class="text-xs text-brand-500 mb-1">Your last share code:</p>
+            <p class="text-xl font-extrabold text-brand-700 tracking-wider">${data.counselorCode}</p>
+          </div>
+        ` : ''}
+
+        <div class="pt-4 border-t border-gray-100">
+          <button onclick="resetAll()" class="w-full py-3 bg-red-50 text-red-500 rounded-xl font-bold text-sm">
+            Reset Everything 🗑️
+          </button>
+          <p class="text-[10px] text-gray-400 text-center mt-2">This will delete all your data and start fresh</p>
+        </div>
+
+        <div class="text-center py-4">
+          <p class="text-[10px] text-gray-300">Values-to-Action Pathfinder v1.0</p>
+          <p class="text-[10px] text-gray-300">AI Tokens: ${totalAIInputTokens} in / ${totalAIOutputTokens} out</p>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function saveSettings() {
+  const data = loadData();
+  data.name = document.getElementById('settings-name').value.trim() || data.name;
+  data.grade = document.getElementById('settings-grade').value;
+  saveData(data);
+  showScreen('settings');
+}
+
+async function viewStudentRoadmap() {
+  const code = document.getElementById('counselor-code').value.trim().toUpperCase();
+  if (!code) return;
+
+  const area = document.getElementById('counselor-view-area');
+  area.innerHTML = '<p class="text-xs text-gray-500">Loading...</p>';
+
+  try {
+    const res = await fetch(`https://16504442930.work/read?key=${code}`);
+    const result = await res.json();
+    if (!result || !result.value) {
+      area.innerHTML = '<p class="text-xs text-red-500">Code not found. Check and try again.</p>';
+      return;
+    }
+
+    const studentData = JSON.parse(result.value);
+    area.innerHTML = `
+      <div class="bg-white rounded-xl p-4 border border-gray-200 space-y-3">
+        <h4 class="font-bold text-sm text-brand-900">📋 ${studentData.name}'s Profile (Grade ${studentData.grade})</h4>
+        <div>
+          <p class="text-[10px] text-gray-500 font-bold uppercase">Archetype</p>
+          <p class="text-xs text-brand-700 font-semibold">${studentData.archetype}</p>
+        </div>
+        <div>
+          <p class="text-[10px] text-gray-500 font-bold uppercase">Values</p>
+          <div class="flex flex-wrap gap-1 mt-1">${(studentData.values||[]).map(v=>`<span class="px-2 py-0.5 bg-brand-100 text-brand-700 rounded-full text-[10px] font-semibold">${v}</span>`).join('')}</div>
+        </div>
+        <div>
+          <p class="text-[10px] text-gray-500 font-bold uppercase">Strengths</p>
+          <div class="flex flex-wrap gap-1 mt-1">${(studentData.strengths||[]).map(s=>`<span class="px-2 py-0.5 bg-mint-400/20 text-mint-700 rounded-full text-[10px] font-semibold">${s}</span>`).join('')}</div>
+        </div>
+        <div>
+          <p class="text-[10px] text-gray-500 font-bold uppercase">Experiments (${(studentData.experiments||[]).length})</p>
+          ${(studentData.experiments||[]).map(e => `
+            <div class="flex items-center gap-2 mt-1">
+              <span class="text-[10px] ${e.status==='completed'?'text-green-600':'text-gray-400'}">${e.status==='completed'?'✅':'⏳'}</span>
+              <span class="text-xs text-gray-700">${e.title}</span>
+              ${e.rating ? `<span class="text-[10px] text-accent-500">${'⭐'.repeat(e.rating)}</span>` : ''}
+            </div>
+          `).join('')}
+        </div>
+        ${studentData.roadmap ? `
+          <div>
+            <p class="text-[10px] text-gray-500 font-bold uppercase">Roadmap: ${studentData.roadmap.title}</p>
+            <p class="text-xs text-gray-600 mt-1">${studentData.roadmap.vision}</p>
+            <div class="mt-2 space-y-1">
+              ${(studentData.roadmap.phases||[]).map(p => `
+                <div class="text-xs text-gray-600">${p.emoji} <strong>${p.name}</strong> (${p.timeframe}): ${p.focus}</div>
+              `).join('')}
+            </div>
+          </div>
+        ` : '<p class="text-xs text-gray-400">No roadmap generated yet</p>'}
+        <p class="text-[10px] text-gray-300">Generated: ${new Date(studentData.generatedAt).toLocaleDateString()}</p>
+      </div>
+    `;
+  } catch (e) {
+    area.innerHTML = `<p class="text-xs text-red-500">Error: ${e.message}</p>`;
+  }
+}
+
+function resetAll() {
+  if (!confirm('Are you sure? This will delete ALL your data including values, experiments, and roadmap.')) return;
+  localStorage.removeItem('pathfinder_data');
+  chatAnswers = {};
+  currentQuestionIndex = 0;
+  showScreen('home');
+}
+
+// ========== INIT ==========
+(function() {
+  showScreen('home');
+})();
+</script>
+
+<!-- Shake animation -->
+<style>
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-8px); }
+  75% { transform: translateX(8px); }
+}
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+</style>
+</body>
+</html>
